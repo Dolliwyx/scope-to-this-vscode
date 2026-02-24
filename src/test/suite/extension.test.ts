@@ -1,14 +1,25 @@
 import * as assert from 'assert';
 
-// You can import and use all API from the 'vscode' module
-// as well as import your extension to test it
-import * as vscode from 'vscode';
-// import * as myExtension from '../../extension';
+import { createExcludeList } from '../../utils';
 
 suite('Extension Test Suite', () => {
-    vscode.window.showInformationMessage('Start all tests.');
+    test('createExcludeList excludes strict prefix siblings', () => {
+        const excludes = createExcludeList('.vscode');
 
-    test('Sample test', () => {
+        assert.ok(excludes.includes('.vs'));
+        assert.ok(excludes.includes('.vs/**'));
+    });
 
+    test('createExcludeList excludes longer same-prefix siblings', () => {
+        const excludes = createExcludeList('.vscode');
+
+        assert.ok(excludes.includes('.vscode[!/]*/**'));
+    });
+
+    test('createExcludeList escapes glob metacharacters', () => {
+        const excludes = createExcludeList('a[b]/c*d');
+
+        assert.ok(excludes.some(pattern => pattern.startsWith('a\\[b\\]/')));
+        assert.ok(excludes.includes('a\\[b\\]/c\\*d[!/]*/**'));
     });
 });

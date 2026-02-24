@@ -13,8 +13,6 @@ Adds "Scope to This" option to the Explorer context menu, like in Visual Studio.
 
 * To scope we use the `file.exclude` option in the `settings.json` configuration file. This file may be included in the Git repository. So be careful when you commit...
 
-* Folders and files that have the same prefix as the selected folder name may still appear. For example, if you want to scope to the `.vscode` folder, folders and files like `.vs` and `.vscodeignore` will still be visible. 
-
 ## Acknowledgement 🙏
 This project inspired by these projects:
 * [Explorer Exclude](https://github.com/redvanworkshop/explorer-exclude-vscode-extension)

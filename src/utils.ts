@@ -83,18 +83,41 @@ function getRelativePath(path: vscode.Uri) {
     }
 }
 
-function createExcludeList(path: string) {
-    const excludes: string[] = [];
+function escapeGlobSegment(segment: string) {
+    return segment.replace(/([\\*?[\]{}()!+@|])/g, '\\$1');
+}
 
-    const dirs = path.split('/');
+function escapeNegatedCharClassChar(char: string) {
+    if (char === '\\' || char === ']' || char === '-' || char === '^' || char === '!') {
+        return `\\${char}`;
+    }
+
+    return char;
+}
+
+export function createExcludeList(path: string) {
+    const excludes = new Set<string>();
+
+    const dirs = path.split('/').filter(Boolean);
     dirs.forEach((dir, dirI) => {
-        const dirsSoFar = dirs.slice(0, dirI).join('/') + (dirI > 0 ? '/' : '');
-        for (let i = 0; i < dir.length; i++) {
-            excludes.push(`${dirsSoFar}${dir.slice(0, i)}[!${dir[i]}]*/**`);
+        const dirsSoFar = dirs.slice(0, dirI).map(escapeGlobSegment).join('/') + (dirI > 0 ? '/' : '');
+
+        for (let i = 1; i < dir.length; i++) {
+            const strictPrefix = escapeGlobSegment(dir.slice(0, i));
+            excludes.add(`${dirsSoFar}${strictPrefix}`);
+            excludes.add(`${dirsSoFar}${strictPrefix}/**`);
         }
+
+        for (let i = 0; i < dir.length; i++) {
+            const prefix = escapeGlobSegment(dir.slice(0, i));
+            const char = escapeNegatedCharClassChar(dir[i]);
+            excludes.add(`${dirsSoFar}${prefix}[!${char}]*/**`);
+        }
+
+        excludes.add(`${dirsSoFar}${escapeGlobSegment(dir)}[!/]*/**`);
     });
 
-    return excludes;
+    return [...excludes];
 }
 
 function getExcludes() {
