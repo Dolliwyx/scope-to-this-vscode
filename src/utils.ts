@@ -3,9 +3,8 @@ import * as vscode from 'vscode';
 type ExcludeObject = { [key: string]: any };
 
 const KEY_CURRENT_SCOPE = 'scopeToThis.currentScope';
+const KEY_CURRENT_EXCLUDES = 'scopeToThis.currentExcludes';
 const CONTEXT_IS_SCOPED = 'scopeToThis.scoped';
-
-const workspaceFolders = vscode.workspace.workspaceFolders;
 
 let vscodeContext: vscode.ExtensionContext | null = null;
 
@@ -20,18 +19,19 @@ export function initContext(context: vscode.ExtensionContext) {
 
 export async function scopeToThis(path: vscode.Uri) {
     try {
-        const relative = getRelativePath(path);
+        const workspaceAndPath = getWorkspaceAndRelativePath(path);
 
         const excludes = getExcludes();
 
-        if (excludes && relative) {
-            const paths = createExcludeList(relative);
+        if (excludes && workspaceAndPath) {
+            const paths = await createExcludeList(workspaceAndPath.relativePath, workspaceAndPath.workspace.uri);
 
             paths.forEach(path => excludes[path] = true);
 
             await updateExcludes(excludes);
 
-            vscodeContext?.workspaceState.update(KEY_CURRENT_SCOPE, relative);
+            await vscodeContext?.workspaceState.update(KEY_CURRENT_SCOPE, workspaceAndPath.relativePath);
+            await vscodeContext?.workspaceState.update(KEY_CURRENT_EXCLUDES, paths);
             vscode.commands.executeCommand('setContext', CONTEXT_IS_SCOPED, true);
         } else {
             vscode.window.showErrorMessage("Error in reading vscode settings.");
@@ -45,10 +45,14 @@ export async function scopeToThis(path: vscode.Uri) {
 export async function clearScope() {
     try {
         const scope = vscodeContext?.workspaceState.get(KEY_CURRENT_SCOPE, undefined);
-        if (scope) {
+        const currentExcludes = vscodeContext?.workspaceState.get(KEY_CURRENT_EXCLUDES, [] as string[]);
+
+        if (scope || (currentExcludes && currentExcludes.length > 0)) {
             const excludes = getExcludes();
             if (excludes) {
-                const paths = createExcludeList(scope);
+                const paths = (currentExcludes && currentExcludes.length > 0)
+                    ? currentExcludes
+                    : (scope ? createLegacyExcludeList(scope) : []);
 
                 paths.forEach(path => {
                     if (path && excludes.hasOwnProperty(path)) {
@@ -58,7 +62,8 @@ export async function clearScope() {
 
                 await updateExcludes(excludes);
 
-                vscodeContext?.workspaceState.update(KEY_CURRENT_SCOPE, undefined);
+                await vscodeContext?.workspaceState.update(KEY_CURRENT_SCOPE, undefined);
+                await vscodeContext?.workspaceState.update(KEY_CURRENT_EXCLUDES, undefined);
                 vscode.commands.executeCommand('setContext', CONTEXT_IS_SCOPED, false);
             } else {
                 vscode.window.showErrorMessage("Error in reading vscode settings.");
@@ -70,7 +75,9 @@ export async function clearScope() {
     }
 }
 
-function getRelativePath(path: vscode.Uri) {
+function getWorkspaceAndRelativePath(path: vscode.Uri) {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+
     if (!workspaceFolders || !workspaceFolders.length) {
         return;
     }
@@ -78,7 +85,10 @@ function getRelativePath(path: vscode.Uri) {
     for (const workspace of workspaceFolders) {
         if (path.fsPath.startsWith(workspace.uri.fsPath)) {
             const relative = path.path.substring(workspace.uri.path.length);
-            return relative.startsWith('/') ? relative.substring(1) : relative;
+            return {
+                workspace,
+                relativePath: relative.startsWith('/') ? relative.substring(1) : relative
+            };
         }
     }
 }
@@ -95,7 +105,44 @@ function escapeNegatedCharClassChar(char: string) {
     return char;
 }
 
-export function createExcludeList(path: string) {
+export function createExcludeListForSiblings(path: string, siblingsByLevel: string[][]) {
+    const excludes = new Set<string>();
+    const dirs = path.split('/').filter(Boolean);
+
+    dirs.forEach((dir, dirI) => {
+        const currentPath = dirs.slice(0, dirI);
+        const siblings = siblingsByLevel[dirI] || [];
+
+        siblings.forEach(sibling => {
+            if (sibling === dir) {
+                return;
+            }
+
+            const siblingPath = [...currentPath, sibling].map(escapeGlobSegment).join('/');
+            excludes.add(siblingPath);
+            excludes.add(`${siblingPath}/**`);
+        });
+    });
+
+    return [...excludes];
+}
+
+async function createExcludeList(path: string, workspaceUri: vscode.Uri) {
+    const dirs = path.split('/').filter(Boolean);
+    const siblingsByLevel: string[][] = [];
+
+    let currentUri = workspaceUri;
+
+    for (const dir of dirs) {
+        const entries = await vscode.workspace.fs.readDirectory(currentUri);
+        siblingsByLevel.push(entries.map(([name]) => name));
+        currentUri = vscode.Uri.joinPath(currentUri, dir);
+    }
+
+    return createExcludeListForSiblings(path, siblingsByLevel);
+}
+
+function createLegacyExcludeList(path: string) {
     const excludes = new Set<string>();
 
     const dirs = path.split('/').filter(Boolean);
@@ -121,6 +168,8 @@ export function createExcludeList(path: string) {
 }
 
 function getExcludes() {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+
     if (!workspaceFolders || !workspaceFolders.length) {
         return;
     }
@@ -135,6 +184,8 @@ function getExcludes() {
 }
 
 async function updateExcludes(excludes: ExcludeObject) {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+
     if (workspaceFolders && workspaceFolders.length > 0) {
         try {
             const config = vscode.workspace.getConfiguration('files', null);
