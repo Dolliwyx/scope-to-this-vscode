@@ -1,6 +1,10 @@
 import * as assert from 'assert';
 
-import { createExcludeListForSiblings } from '../../utils';
+import {
+    collapseNestedPaths,
+    createExcludeListForSelections,
+    createExcludeListForSiblings
+} from '../../utils';
 
 suite('Extension Test Suite', () => {
     test('createExcludeListForSiblings excludes strict prefix siblings', () => {
@@ -39,5 +43,63 @@ suite('Extension Test Suite', () => {
 
         assert.ok(excludes.includes('a\\*b'));
         assert.ok(excludes.includes('a\\[b\\]/c\\?d/**'));
+    });
+
+    test('collapseNestedPaths removes nested and duplicate paths', () => {
+        const collapsed = collapseNestedPaths([
+            'folderA',
+            'folderA/child',
+            'folderB',
+            'folderB',
+            'folderC/child/grandChild',
+            'folderC/child'
+        ]);
+
+        assert.deepStrictEqual(collapsed, ['folderA', 'folderB', 'folderC/child']);
+    });
+
+    test('collapseNestedPaths treats root as highest priority', () => {
+        const collapsed = collapseNestedPaths(['folderA', '', 'folderA/child']);
+        assert.deepStrictEqual(collapsed, ['']);
+    });
+
+    test('createExcludeListForSelections supports multiple top-level selections', async () => {
+        const excludes = await createExcludeListForSelections(
+            ['folderA', 'folderB'],
+            async currentPath => {
+                if (currentPath.length === 0) {
+                    return ['folderA', 'folderB', 'folderC'];
+                }
+
+                return [];
+            }
+        );
+
+        assert.ok(excludes.includes('folderC'));
+        assert.ok(excludes.includes('folderC/**'));
+        assert.ok(!excludes.includes('folderA'));
+        assert.ok(!excludes.includes('folderB/**'));
+    });
+
+    test('createExcludeListForSelections supports siblings under same parent', async () => {
+        const excludes = await createExcludeListForSelections(
+            ['folderA/child1', 'folderA/child2'],
+            async currentPath => {
+                if (currentPath.length === 0) {
+                    return ['folderA', 'folderB'];
+                }
+
+                if (currentPath.join('/') === 'folderA') {
+                    return ['child1', 'child2', 'child3'];
+                }
+
+                return [];
+            }
+        );
+
+        assert.ok(excludes.includes('folderB'));
+        assert.ok(excludes.includes('folderA/child3/**'));
+        assert.ok(!excludes.includes('folderA/child1'));
+        assert.ok(!excludes.includes('folderA/child2/**'));
     });
 });

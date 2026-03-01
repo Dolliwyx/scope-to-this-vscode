@@ -6,23 +6,26 @@ import * as utils from './utils';
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
 
-    utils.initContext(context);
+    await utils.initContext(context);
 
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with registerCommand
     // The commandId parameter must match the command field in package.json
-    let scope = vscode.commands.registerCommand('scope-to-this.scope', async (path: vscode.Uri) => {
+    let scope = vscode.commands.registerCommand('scope-to-this.scope', async (path: vscode.Uri, paths?: vscode.Uri[]) => {
         // The code you place here will be executed every time your command is executed
 
-        if (!path) {
+        const selectedPaths = (paths && paths.length > 0)
+            ? paths
+            : (path ? [path] : []);
+
+        if (selectedPaths.length === 0) {
             vscode.window.showInformationMessage("Use this command from the Explorer context menu.");
             return;
         }
 
-        await utils.clearScope();
-        await utils.scopeToThis(path);
+        await utils.scopeToThese(selectedPaths);
     });
 
     // The command has been defined in the package.json file

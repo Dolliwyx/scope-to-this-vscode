@@ -1,3 +1,13 @@
+## [0.3.0](https://github.com/rhalaly/scope-to-this-vscode/compare/v0.2.1...v0.3.0) (2026-03-01)
+
+
+### Features
+
+* add additive multi-folder scoping from Explorer selections ([8e1a067](https://github.com/rhalaly/scope-to-this-vscode/commit/8e1a067))
+* keep scoping isolated per workspace folder in multi-root workspaces
+* migrate legacy scope state and managed excludes to the new model
+
+
 ## [0.2.1](https://github.com/rhalaly/scope-to-this-vscode/compare/v0.2.0...v0.2.1) (2021-08-03)
 
 
